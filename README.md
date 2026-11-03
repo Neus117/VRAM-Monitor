@@ -43,6 +43,26 @@ python app.py
 - 或直接关闭页面：约 1 秒后自动退出；刷新页面有 1 秒重连宽限，不会误退。
 - 命令行启动时也可以按 `Ctrl+C`。
 
+## 开始菜单快捷方式
+
+Windows 11 的桌面快捷方式右键菜单不提供「固定到开始屏幕」。如果要把本工具放进开始屏幕：
+
+1. 把桌面快捷方式复制到当前用户的开始菜单程序目录：
+
+```text
+%APPDATA%\Microsoft\Windows\Start Menu\Programs\显存监控.lnk
+```
+
+实际路径通常是：
+
+```text
+C:\Users\<用户名>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\显存监控.lnk
+```
+
+2. 打开「开始」→「所有应用」，找到「显存监控」（或直接搜索），右键选择「固定到“开始”屏幕」。
+
+复制后快捷方式的目标、工作目录和图标与桌面版一致；桌面上的快捷方式可以保留，不必覆盖。
+
 ## 依赖
 
 - Windows 10 / 11
