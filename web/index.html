@@ -1,0 +1,1368 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>显存监控</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='3' width='18' height='18' rx='5' fill='%232959cc'/%3E%3Crect x='8' y='8' width='8' height='8' rx='2' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f3f4f6;
+    --card: #ffffff;
+    --line: #e8ebf0;
+    --text: #0b0d12;
+    --text-2: #5d6472;
+    --text-3: #8a93a5;
+    --track: #e9edf4;
+    --accent: #2959cc;
+    --accent-soft: rgba(41, 89, 204, 0.12);
+    --ok: #15803d;
+    --warn: #b45309;
+    --danger: #d92d20;
+    --danger-solid: #b91c1c;
+    --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 30px rgba(15, 23, 42, 0.05);
+    --glow: rgba(41, 89, 204, 0.06);
+    color-scheme: light;
+  }
+  html[data-theme="dark"] {
+    --bg: #191919;
+    --card: #242424;
+    --line: #323232;
+    --text: #ffffff;
+    --text-2: #b0b0b0;
+    --text-3: #808080;
+    --track: #333333;
+    --accent: #698bdb;
+    --accent-soft: rgba(105, 139, 219, 0.14);
+    --ok: #4ade80;
+    --warn: #e0a33a;
+    --danger: #ef5b5b;
+    --danger-solid: #b91c1c;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.24);
+    --glow: rgba(105, 139, 219, 0.08);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(820px 360px at 50% -80px, var(--glow), transparent 72%);
+    pointer-events: none;
+  }
+  .page {
+    position: relative;
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 28px 24px 24px;
+  }
+
+  /* ---- 顶栏 ---- */
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .logo {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: grid; place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent);
+    flex: none;
+  }
+  .logo svg { width: 22px; height: 22px; display: block; }
+  .brand-text { min-width: 0; }
+  .brand h1 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .brand p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 560px;
+  }
+  .top-right { display: flex; align-items: center; gap: 12px; flex: none; }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-3) 8%, transparent);
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: default;
+  }
+  .status i {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text-3);
+    flex: none;
+  }
+  .status[data-kind="live"] {
+    color: var(--text);
+    background: color-mix(in srgb, var(--ok) 10%, transparent);
+  }
+  .status[data-kind="live"] i {
+    background: var(--ok);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
+  }
+  .status[data-kind="connecting"],
+  .status[data-kind="reconnect"] {
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+  }
+  .status[data-kind="connecting"] i,
+  .status[data-kind="reconnect"] i { background: var(--warn); }
+  .status[data-kind="error"] {
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+  }
+  .status[data-kind="error"] i { background: var(--danger); }
+  .status[data-kind="stopped"] {
+    color: var(--text-3);
+    background: color-mix(in srgb, var(--text-3) 8%, transparent);
+  }
+  .status[data-kind="stopped"] i { background: var(--text-3); }
+
+  .icon-btn {
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--text-2);
+    cursor: pointer;
+    padding: 0;
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--text-3); }
+  .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .icon-btn svg { width: 16px; height: 16px; display: none; }
+  html[data-theme="light"] .icon-moon,
+  html[data-theme="dark"] .icon-sun { display: block; }
+
+  /* ---- 停止监控（右上角红色电源） ---- */
+  .stop-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 32px;
+    min-width: 104px;
+    padding: 0 14px;
+    border: 1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    color: var(--danger);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 0 16px color-mix(in srgb, var(--danger) 18%, transparent);
+    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease,
+      color 0.16s ease, box-shadow 0.16s ease;
+  }
+  .stop-btn .power {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--danger) 55%, transparent));
+    transition: transform 0.16s ease, filter 0.16s ease;
+  }
+  .stop-btn:hover {
+    background: var(--danger-solid);
+    border-color: var(--danger-solid);
+    color: #ffffff;
+    transform: translateY(-1px) scale(1.03);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent),
+      0 0 24px color-mix(in srgb, var(--danger) 48%, transparent);
+  }
+  .stop-btn:hover .power {
+    transform: scale(1.14);
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.55));
+  }
+  .stop-btn:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
+  .stop-btn:disabled {
+    color: var(--text-3);
+    border-color: var(--line);
+    background: transparent;
+    box-shadow: none;
+    opacity: 0.7;
+    cursor: default;
+    transform: none;
+  }
+  .stop-btn:disabled .power { filter: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .stop-btn, .stop-btn .power { transition: none; }
+  }
+
+  /* ---- 提示条 ---- */
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 16px;
+    border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent);
+    border-left: 3px solid var(--warn);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--warn) 9%, transparent);
+    color: var(--warn);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .banner[data-kind="info"] {
+    border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+    border-left-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    color: var(--text-2);
+  }
+  .banner[hidden] { display: none; }
+
+  /* ---- 主区域 ---- */
+  main { display: flex; flex-direction: column; gap: 16px; }
+  .overview {
+    display: grid;
+    grid-template-columns: 400px minmax(0, 1fr);
+    grid-template-rows: 440px 300px;
+    gap: 16px;
+    align-items: stretch;
+  }
+  .hero { grid-column: 1; grid-row: 1; }
+  .processes { grid-column: 2; grid-row: 1; }
+  .chart { grid-column: 2; grid-row: 2; }
+  .metrics { grid-column: 1; grid-row: 2; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+
+  .hero {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+  }
+  .hero-title {
+    width: 100%;
+    text-align: left;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .gauge-wrap {
+    position: relative;
+    width: 300px;
+    height: 300px;
+  }
+  .gauge {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+    display: block;
+  }
+  .gauge .track {
+    fill: none;
+    stroke: var(--track);
+    stroke-width: 12;
+  }
+  .gauge .bar {
+    fill: none;
+    stroke: url(#gaugeGrad);
+    stroke-width: 12;
+    stroke-linecap: round;
+    stroke-dasharray: 515.22;
+    stroke-dashoffset: 515.22;
+    transition: stroke-dashoffset 0.5s linear, stroke 0.3s;
+  }
+  .gauge .bar.warn { stroke: var(--warn); }
+  .gauge .bar.danger { stroke: var(--danger); }
+  @media (prefers-reduced-motion: reduce) {
+    .gauge .bar { transition: none; }
+  }
+  #gaugeGrad .stop-a { stop-color: var(--accent); }
+  #gaugeGrad .stop-b { stop-color: var(--accent); stop-opacity: 0.55; }
+
+  .gauge-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    pointer-events: none;
+  }
+  .pct {
+    font-size: 62px;
+    line-height: 1;
+    font-weight: 650;
+    letter-spacing: -2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pct-unit {
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--text-2);
+    margin-left: 4px;
+    letter-spacing: 0;
+  }
+  .gauge-label { font-size: 13px; color: var(--text-2); }
+  .gauge-sub {
+    font-size: 12px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hero-foot {
+    width: 100%;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: center;
+    gap: clamp(32px, 6vw, 72px);
+  }
+  .hero-foot > div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+  }
+  .hero-foot .k { font-size: 12px; color: var(--text-3); }
+  .hero-foot .v {
+    font-size: 14px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+    height: 300px;
+    min-width: 0;
+  }
+  .metric {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .m-label { font-size: 12px; color: var(--text-2); }
+  .m-value {
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.8px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .m-unit {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-2);
+    margin-left: 3px;
+    letter-spacing: 0;
+  }
+
+  .chart {
+    padding: 20px 24px 16px;
+    min-width: 0;
+  }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .card-head h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .legend {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text-3);
+    flex: none;
+  }
+  .dot.mem { background: var(--accent); }
+  .head-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 22px;
+    font-size: 12px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .sep { width: 1px; height: 10px; background: var(--line); }
+  .chart-wrap { position: relative; height: 208px; min-width: 0; }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .tip {
+    position: absolute;
+    z-index: 2;
+    min-width: 136px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    box-shadow: var(--shadow);
+    font-size: 12px;
+    color: var(--text-2);
+    pointer-events: none;
+  }
+  .tip[hidden] { display: none; }
+  .tip-time {
+    margin-bottom: 8px;
+    color: var(--text-3);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tip-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .tip-row b {
+    margin-left: auto;
+    color: var(--text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- 进程占用 ---- */
+  .processes {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .proc-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .proc-head h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .proc-total {
+    color: var(--text-3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .proc-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 10px;
+    flex: 1;
+  }
+  .proc-row { min-width: 0; }
+  .proc-line {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+  }
+  .proc-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .proc-desc {
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-3);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .proc-count {
+    flex: none;
+    font-size: 11px;
+    color: var(--text-3);
+  }
+  .proc-val {
+    flex: none;
+    margin-left: auto;
+    color: var(--text-2);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .proc-bar {
+    height: 5px;
+    margin-top: 4px;
+    border-radius: 2px;
+    background: var(--track);
+    overflow: hidden;
+  }
+  .proc-bar i {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width 0.5s linear;
+  }
+  .proc-note {
+    margin-top: 10px;
+    color: var(--text-2);
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-line;
+  }
+  .proc-empty {
+    padding: 6px 0;
+    color: var(--text-3);
+    font-size: 13px;
+  }
+
+  footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 20px;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  @media (max-width: 900px) {
+    .overview {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto;
+    }
+    .hero, .processes, .chart, .metrics {
+      grid-column: auto;
+      grid-row: auto;
+    }
+    .hero { padding: 20px; }
+    .gauge-wrap { width: 300px; height: 300px; }
+    .metrics { width: min(400px, 100%); height: 300px; justify-self: center; align-self: auto; }
+    .brand p { max-width: 52vw; }
+  }
+  @media (max-width: 600px) {
+    .page { padding: 20px 16px; }
+    .chart { padding: 16px; }
+    .chart-wrap { height: 180px; }
+    .brand h1 { font-size: 15px; }
+    .brand p { max-width: 30vw; }
+    .stop-btn { width: 32px; height: 32px; min-width: 0; padding: 0; }
+    .stop-btn span { display: none; }
+    .processes { padding: 16px; }
+  }
+  @media (max-width: 380px) {
+    .hero { padding: 16px; }
+    .gauge-wrap { width: 240px; height: 240px; }
+    .pct { font-size: 50px; }
+    .m-value { font-size: 28px; }
+    .card-head { flex-wrap: wrap; }
+    .head-right { width: 100%; justify-content: flex-start; }
+  }
+  @media (max-width: 340px) {
+    .brand p { display: none; }
+  }
+
+  /* ---- 桌面：按视口高度装下，不产生纵向滚动 ---- */
+  @media (min-width: 901px) {
+    html, body { height: 100%; }
+    body { overflow: hidden; }
+    .page {
+      height: 100vh;
+      padding: 12px 24px;
+      display: flex;
+      flex-direction: column;
+    }
+    .top { margin-bottom: 12px; flex: none; }
+    .logo { width: 32px; height: 32px; border-radius: 8px; }
+    .logo svg { width: 18px; height: 18px; }
+    .brand h1 { font-size: 15px; }
+    .brand p { font-size: 11px; margin-top: 2px; }
+    .status { height: 32px; padding: 0 10px; gap: 7px; font-size: 12px; }
+    .icon-btn { width: 32px; height: 32px; }
+    .icon-btn svg { width: 14px; height: 14px; }
+    .stop-btn { height: 32px; min-width: 96px; padding: 0 12px; gap: 6px; font-size: 11px; }
+    .stop-btn .power { width: 16px; height: 16px; }
+
+    main { flex: 1; min-height: 0; gap: 0; }
+    .overview {
+      height: 100%;
+      grid-template-rows: minmax(0, 1.55fr) minmax(0, 1fr);
+      gap: 12px;
+    }
+    .hero, .processes, .chart, .metrics { min-height: 0; }
+
+    .hero { padding: 10px; }
+    .hero-title { font-size: clamp(12px, 2.3vh, 15px); }
+    .gauge-wrap { width: clamp(140px, 32vh, 300px); height: clamp(140px, 32vh, 300px); }
+    .pct { font-size: clamp(34px, 8.5vh, 62px); letter-spacing: -1.5px; }
+    .pct-unit { font-size: clamp(13px, 2.8vh, 22px); }
+    .gauge-label { font-size: clamp(10px, 1.9vh, 13px); }
+    .gauge-sub { font-size: clamp(9px, 1.6vh, 12px); }
+    .hero-foot { margin-top: 10px; padding-top: 8px; }
+    .hero-foot .k { font-size: clamp(9px, 1.6vh, 12px); }
+    .hero-foot .v { font-size: clamp(10px, 1.9vh, 14px); }
+
+    .metrics {
+      height: 100%;
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .metric { padding: clamp(7px, 1.4vh, 16px); gap: clamp(2px, 0.7vh, 8px); }
+    .m-label { font-size: clamp(9px, 1.6vh, 12px); }
+    .m-value { font-size: clamp(18px, 4.5vh, 30px); }
+    .m-unit { font-size: clamp(9px, 1.6vh, 12px); }
+
+    .processes { padding: clamp(4px, 1vh, 20px) clamp(8px, 1.2vw, 24px); }
+    .proc-head h2 { font-size: clamp(12px, 2.3vh, 15px); }
+    .proc-total { font-size: clamp(9px, 1.6vh, 12px); }
+    .proc-list { gap: 3px; margin-top: clamp(2px, 0.6vh, 10px); }
+    .proc-line { gap: 4px; }
+    .proc-name { font-size: clamp(10px, 1.95vh, 13px); line-height: 1.25; }
+    .proc-desc { font-size: clamp(9px, 1.65vh, 12px); line-height: 1.25; margin-top: 1px; }
+    .proc-count { font-size: clamp(8px, 1.4vh, 11px); }
+    .proc-val { font-size: clamp(10px, 1.95vh, 13px); }
+    .proc-bar { height: 3px; margin-top: 2px; }
+    .proc-note { margin-top: 2px; font-size: clamp(9px, 1.65vh, 12px); }
+    .proc-empty { font-size: clamp(9px, 1.8vh, 13px); }
+
+    .chart {
+      padding: clamp(7px, 1.4vh, 20px) clamp(10px, 1.4vw, 24px) clamp(7px, 1.2vh, 16px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .card-head { margin-bottom: clamp(2px, 0.5vh, 8px); }
+    .card-head h2 { font-size: clamp(12px, 2.3vh, 15px); }
+    .legend { font-size: clamp(9px, 1.6vh, 12px); gap: 10px; margin-top: 2px; }
+    .head-right { font-size: clamp(9px, 1.6vh, 12px); height: auto; }
+    .chart-wrap { flex: 1; min-height: 0; height: auto; }
+
+    footer { margin-top: 10px; font-size: 10.5px; flex: none; }
+  }
+</style>
+<script>
+  (function () {
+    try {
+      var q = new URLSearchParams(location.search).get('theme');
+      var t = (q === 'dark' || q === 'light') ? q
+        : (localStorage.getItem('vram-theme') ||
+          (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+      document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="7" y="7" width="10" height="10" rx="2.5"></rect>
+          <path d="M9.5 3v4M14.5 3v4M9.5 17v4M14.5 17v4M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4"></path>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <h1>显存监控</h1>
+        <p id="gpu-name">正在连接…</p>
+      </div>
+    </div>
+    <div class="top-right">
+      <button class="icon-btn" id="theme-toggle" type="button" title="切换主题" aria-label="切换深色或浅色主题">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5 8.6 8.6 0 1 0 20.5 14.3Z"></path>
+        </svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4.2"></circle>
+          <path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"></path>
+        </svg>
+      </button>
+      <span class="status" id="status" data-kind="connecting"><i></i><span id="status-text">连接中</span></span>
+      <button class="stop-btn" id="stop" type="button" title="停止监控并退出" aria-label="停止监控并退出">
+        <svg class="power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M12 3v8"></path>
+          <path d="M6.3 6.3a8 8 0 1 0 11.4 0"></path>
+        </svg>
+        <span id="stop-label">停止监控</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" data-kind="error" role="status" hidden></div>
+
+  <main>
+    <div class="overview">
+      <section class="hero card" aria-label="显存占用概览">
+        <div class="hero-title">显存占用</div>
+        <div class="gauge-wrap">
+          <svg class="gauge" viewBox="0 0 200 200" aria-hidden="true">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" class="stop-a"></stop>
+                <stop offset="1" class="stop-b"></stop>
+              </linearGradient>
+            </defs>
+            <circle class="track" cx="100" cy="100" r="82"></circle>
+            <circle class="bar" id="gauge-bar" cx="100" cy="100" r="82"></circle>
+          </svg>
+          <div class="gauge-center">
+            <div class="pct"><span id="mem-pct">—</span><span class="pct-unit">%</span></div>
+            <div class="gauge-sub" id="mem-frac">— / —</div>
+          </div>
+        </div>
+        <div class="hero-foot">
+          <div><span class="k">可用显存</span><span class="v" id="mem-free">—</span></div>
+          <div><span class="k">显存总量</span><span class="v" id="mem-total">—</span></div>
+        </div>
+      </section>
+
+      <section class="processes card" aria-label="进程显存占用">
+        <div class="proc-head">
+          <h2>进程占用</h2>
+          <span class="proc-total" id="proc-total">—</span>
+        </div>
+        <div class="proc-list" id="proc-list">
+          <div class="proc-empty">正在读取进程…</div>
+        </div>
+        <div class="proc-note" id="proc-note">按本地显存排序</div>
+      </section>
+
+      <section class="chart card" aria-label="显存曲线">
+        <div class="card-head">
+          <div>
+            <h2>显存曲线</h2>
+            <div class="legend">
+              <span><i class="dot mem"></i>显存</span>
+              <span><i class="dot util"></i>GPU 利用率</span>
+            </div>
+          </div>
+          <div class="head-right">
+            <span id="chart-peak">峰值 —</span>
+            <span class="sep"></span>
+            <span id="chart-span">10 秒</span>
+          </div>
+        </div>
+        <div class="chart-wrap" id="chart-wrap">
+          <canvas id="chart"></canvas>
+          <div class="tip" id="tip" hidden></div>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="GPU 指标">
+        <article class="metric card">
+          <span class="m-label">GPU 利用率</span>
+          <div class="m-value"><span id="m-util">—</span><span class="m-unit">%</span></div>
+        </article>
+        <article class="metric card">
+          <span class="m-label">温度</span>
+          <div class="m-value"><span id="m-temp">—</span><span class="m-unit">°C</span></div>
+        </article>
+        <article class="metric card">
+          <span class="m-label">功耗</span>
+          <div class="m-value"><span id="m-power">—</span><span class="m-unit">W</span></div>
+        </article>
+        <article class="metric card">
+          <span class="m-label">核心频率</span>
+          <div class="m-value"><span id="m-clock">—</span><span class="m-unit">MHz</span></div>
+        </article>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <span id="refresh-note">每 0.5 秒刷新 · 关闭页面后自动停止</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const MAX_HISTORY = 240;
+  const PAD = { l: 38, r: 10, t: 12, b: 26 };
+  const GAUGE_C = 515.22;
+  const FONT = '"Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif';
+
+  let config = null;
+  let history = [];
+  let lastSeq = 0;
+  let source = null;
+  let stopped = false;
+  let accentRgb = [41, 89, 204];
+  let hoverT = null;
+  let cw = 0;
+  let ch = 0;
+
+  const canvas = $('chart');
+  const ctx = canvas.getContext('2d');
+  const tip = $('tip');
+  const chartWrap = $('chart-wrap');
+
+  // ---- 主题 ------------------------------------------------------
+  function themeName() {
+    return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  }
+
+  function parseHex(hex) {
+    const h = String(hex || '').replace('#', '');
+    if (h.length !== 6) return [41, 89, 204];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+
+  function mix(rgb, target, amount) {
+    return rgb.map((v, i) => Math.round(v + (target[i] - v) * amount));
+  }
+
+  function applyAccent() {
+    const base = parseHex(config && config.theme ? config.theme.accent : '#2959cc');
+    accentRgb = themeName() === 'dark' ? mix(base, [255, 255, 255], 0.36) : base;
+    document.documentElement.style.setProperty('--accent', 'rgb(' + accentRgb.join(',') + ')');
+    document.documentElement.style.setProperty('--accent-soft', 'rgba(' + accentRgb.join(',') + ',0.12)');
+    document.documentElement.style.setProperty(
+      '--glow',
+      'rgba(' + accentRgb.join(',') + ',' + (themeName() === 'dark' ? '0.08' : '0.06') + ')'
+    );
+  }
+
+  function syncThemeButton() {
+    const dark = themeName() === 'dark';
+    const btn = $('theme-toggle');
+    const text = dark ? '切换到浅色' : '切换到深色';
+    btn.title = text;
+    btn.setAttribute('aria-label', text);
+  }
+
+  $('theme-toggle').addEventListener('click', () => {
+    const next = themeName() === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('vram-theme', next); } catch (e) {}
+    applyAccent();
+    syncThemeButton();
+    drawChart();
+  });
+
+  // ---- 数字格式 --------------------------------------------------
+  const fmtInt = (v) => (v == null ? '—' : Math.round(v).toLocaleString('en-US'));
+  const fmtTemp = (v) => (v == null ? '—' : String(Math.round(v)));
+  const fmtPower = (v) => (v == null ? '—' : (v < 10 ? v.toFixed(1) : String(Math.round(v))));
+
+  // 没有数据时把单位一起藏起来，避免出现「— %」「— °C」这种半截样式。
+  function setValue(id, text) {
+    const el = $(id);
+    el.textContent = text;
+    const unit = el.parentElement && el.parentElement.querySelector('.m-unit, .pct-unit');
+    if (unit) unit.style.display = text === '—' ? 'none' : '';
+  }
+
+  function currentUsed() {
+    const sample = history.length ? history[history.length - 1] : null;
+    return (sample && sample.mem) || 0;
+  }
+
+  function esc(value) {
+    return String(value).replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+  }
+
+  function renderProcesses(payload) {
+    const list = $('proc-list');
+    const note = $('proc-note');
+    const totalEl = $('proc-total');
+    if (!payload || payload.error) {
+      totalEl.textContent = '—';
+      list.innerHTML = '<div class="proc-empty">暂时无法读取进程显存</div>';
+      note.textContent = payload && payload.error ? payload.error : '系统仅统计进程本地显存。';
+      return;
+    }
+    const items = payload.items || [];
+    if (!items.length) {
+      totalEl.textContent = '—';
+      list.innerHTML = '<div class="proc-empty">' +
+        (payload.seq ? '暂无进程显存数据' : '正在读取进程…') + '</div>';
+      note.textContent = '系统仅统计进程本地显存。';
+      return;
+    }
+    const total = currentUsed();
+    const procTotal = payload.total || 0;
+    totalEl.textContent = '合计 ' + fmtInt(procTotal / 1048576) + ' MiB';
+    list.innerHTML = items.map((item) => {
+      const mib = item.bytes / 1048576;
+      const pct = total ? Math.min(100, (mib / total) * 100) : 0;
+      const count = item.count > 1 ? '<span class="proc-count">×' + item.count + '</span>' : '';
+      return '<div class="proc-row">' +
+        '<div class="proc-line">' +
+          '<span class="proc-name" title="' + esc(item.name) + '">' + esc(item.name) + '</span>' + count +
+          '<span class="proc-val">' + fmtInt(mib) + ' MiB</span>' +
+        '</div>' +
+        '<div class="proc-desc" title="' + esc(item.desc || '来源未识别') + '">' +
+          esc(item.desc || '来源未识别') + '</div>' +
+        '<div class="proc-bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+      '</div>';
+    }).join('');
+    if (payload.metric === 'dedicated') {
+      note.textContent = '条形 = 占当前已用显存\n进程值为提交量，可能高于实际占用。';
+    } else {
+      const rest = total - procTotal / 1048576;
+      if (rest > 0.5) {
+        note.textContent = '条形 = 占当前已用显存\n其余 ' + fmtInt(rest) + ' MiB 未归属（驱动/系统保留）。';
+      } else if (rest < -0.5) {
+        note.textContent = '条形 = 占当前已用显存\n进程合计比顶部多 ' + fmtInt(-rest) + ' MiB（口径差异）。';
+      } else {
+        note.textContent = '条形 = 占当前已用显存\n进程合计与顶部占用基本一致。';
+      }
+    }
+  }
+
+  // ---- 状态与提示 ------------------------------------------------
+  function setStatus(kind, text) {
+    $('status').dataset.kind = kind;
+    $('status-text').textContent = text;
+  }
+
+  function setBanner(text, kind) {
+    const el = $('banner');
+    if (!text) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    el.hidden = false;
+    el.dataset.kind = kind || 'error';
+    el.textContent = text;
+  }
+
+  // ---- 数据 ------------------------------------------------------
+  function onInit(payload) {
+    config = payload;
+    const gpu = payload.gpu || {};
+    if (gpu.name) $('gpu-name').textContent = gpu.name;
+    history = (payload.history || []).slice(-MAX_HISTORY);
+    lastSeq = payload.seq || (history.length ? history[history.length - 1].seq : 0);
+    applyAccent();
+    syncThemeButton();
+    if (payload.interval) {
+      $('refresh-note').textContent = '每 ' + (payload.interval / 1000).toFixed(1) + ' 秒刷新 · 关闭页面后自动停止';
+    }
+    if (payload.error) {
+      setStatus('error', '异常');
+      setBanner('GPU 数据不可用：' + payload.error, 'error');
+    } else {
+      setStatus('live', '实时');
+      setBanner('', 'error');
+    }
+    render();
+    if (payload.processes) renderProcesses(payload.processes);
+  }
+
+  function appendSample(sample) {
+    if (lastSeq && sample.seq <= lastSeq) return;
+    lastSeq = sample.seq;
+    history.push(sample);
+    if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+    if (!stopped) {
+      setStatus('live', '实时');
+      setBanner('', 'error');
+    }
+    render();
+  }
+
+  function render() {
+    const s = history.length ? history[history.length - 1] : null;
+    if (!s) {
+      setValue('mem-pct', '—');
+      $('mem-frac').textContent = '— / —';
+      $('mem-free').textContent = '—';
+      $('mem-total').textContent = '—';
+      setValue('m-util', '—');
+      setValue('m-temp', '—');
+      setValue('m-power', '—');
+      setValue('m-clock', '—');
+      $('chart-peak').textContent = '峰值 —';
+      $('chart-span').textContent = '—';
+      drawChart();
+      return;
+    }
+
+    const total = s.total || (config && config.gpu && config.gpu.total) || 0;
+    const pct = total ? Math.min(100, (s.mem / total) * 100) : 0;
+    setValue('mem-pct', total ? pct.toFixed(1) : '—');
+    $('mem-frac').textContent = total ? fmtInt(s.mem) + ' / ' + fmtInt(total) + ' MiB' : '—';
+    $('mem-free').textContent = total ? fmtInt(Math.max(0, total - s.mem)) + ' MiB' : '—';
+    $('mem-total').textContent = total ? fmtInt(total) + ' MiB' : '—';
+    setValue('m-util', s.util == null ? '—' : String(Math.round(s.util)));
+    setValue('m-temp', fmtTemp(s.temp));
+    setValue('m-power', fmtPower(s.power));
+    setValue('m-clock', s.clock == null ? '—' : fmtInt(s.clock));
+
+    const bar = $('gauge-bar');
+    bar.style.strokeDashoffset = (GAUGE_C * (1 - pct / 100)).toFixed(2);
+    bar.classList.toggle('warn', pct >= 85 && pct < 95);
+    bar.classList.toggle('danger', pct >= 95);
+
+    const range = chartRange();
+    if (range) {
+      const visible = history.filter((x) => x.t >= range.lastT - range.span);
+      const peak = visible.length ? Math.max.apply(null, visible.map((x) => x.mem)) : s.mem;
+      $('chart-peak').textContent = '峰值 ' + fmtInt(peak) + ' MiB';
+      $('chart-span').textContent = Math.round(range.span) + ' 秒';
+    }
+    drawChart();
+  }
+
+  // ---- 图表 ------------------------------------------------------
+  function chartRange() {
+    if (!history.length) return null;
+    const last = history[history.length - 1];
+    // 刚开始只有几秒数据时按实际跨度铺满，避免右侧挤出一小段线；满 60 秒后固定。
+    const span = Math.min(60, Math.max(2, last.t - history[0].t));
+    return { lastT: last.t, span: span };
+  }
+
+  function xFor(t, range, x0, x1) {
+    return x1 - ((range.lastT - t) / range.span) * (x1 - x0);
+  }
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function drawChart() {
+    if (!cw || !ch) return;
+    const cLine = cssVar('--line');
+    const cText3 = cssVar('--text-3');
+    ctx.clearRect(0, 0, cw, ch);
+
+    const x0 = PAD.l;
+    const x1 = cw - PAD.r;
+    const y0 = PAD.t;
+    const y1 = ch - PAD.b;
+    const range = chartRange();
+
+    ctx.font = '11px ' + FONT;
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 4; i++) {
+      const v = i * 25;
+      const y = y1 - (v / 100) * (y1 - y0);
+      ctx.strokeStyle = cLine;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(x0, y);
+      ctx.lineTo(x1, y);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = cText3;
+      ctx.textAlign = 'right';
+      ctx.fillText(v + '%', x0 - 8, y);
+    }
+
+    if (!range || history.length < 2) {
+      ctx.fillStyle = cText3;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '12px ' + FONT;
+      ctx.fillText(history.length ? '正在采集…' : '正在等待 GPU 数据…', (x0 + x1) / 2, (y0 + y1) / 2);
+      return;
+    }
+
+    ctx.font = '11px ' + FONT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = cText3;
+    const labels = [range.span, range.span / 2, 0];
+    labels.forEach((sec, i) => {
+      const x = x0 + (i / (labels.length - 1)) * (x1 - x0);
+      ctx.fillText(sec ? '-' + Math.round(sec) + '秒' : '现在', x, y1 + 8);
+    });
+
+    const pts = [];
+    for (const s of history) {
+      if (s.t < range.lastT - range.span) continue;
+      const total = s.total || 1;
+      pts.push({
+        x: xFor(s.t, range, x0, x1),
+        y: y1 - (s.mem / total) * (y1 - y0),
+        u: s.util,
+        s: s
+      });
+    }
+    if (!pts.length) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y0, x1 - x0, y1 - y0);
+    ctx.clip();
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, y1);
+    for (const p of pts) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(pts[pts.length - 1].x, y1);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, y0, 0, y1);
+    grad.addColorStop(0, 'rgba(' + accentRgb.join(',') + ',0.22)');
+    grad.addColorStop(1, 'rgba(' + accentRgb.join(',') + ',0.015)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.strokeStyle = 'rgb(' + accentRgb.join(',') + ')';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    const upts = pts.filter((p) => p.u != null);
+    if (upts.length) {
+      ctx.beginPath();
+      upts.forEach((p, i) => {
+        const y = y1 - (Math.min(100, p.u) / 100) * (y1 - y0);
+        if (i) ctx.lineTo(p.x, y);
+        else ctx.moveTo(p.x, y);
+      });
+      ctx.strokeStyle = cText3;
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+
+    const last = pts[pts.length - 1];
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgb(' + accentRgb.join(',') + ')';
+    ctx.fill();
+
+    if (hoverT != null) {
+      const near = history.reduce((best, s) => (Math.abs(s.t - hoverT) < Math.abs(best.t - hoverT) ? s : best), history[0]);
+      if (near && near.t >= range.lastT - range.span) {
+        const x = xFor(near.t, range, x0, x1);
+        const total = near.total || 1;
+        const yM = y1 - (near.mem / total) * (y1 - y0);
+        const yU = y1 - ((near.util == null ? 0 : near.util) / 100) * (y1 - y0);
+        ctx.strokeStyle = cText3;
+        ctx.globalAlpha = 0.5;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x, y0);
+        ctx.lineTo(x, y1);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(x, yM, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgb(' + accentRgb.join(',') + ')';
+        ctx.fill();
+        if (near.util != null) {
+          ctx.beginPath();
+          ctx.arc(x, yU, 3, 0, Math.PI * 2);
+          ctx.fillStyle = cText3;
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  function showTip(sample) {
+    const d = new Date(sample.t * 1000);
+    const time = [d.getHours(), d.getMinutes(), d.getSeconds()]
+      .map((v) => String(v).padStart(2, '0')).join(':');
+    tip.innerHTML =
+      '<div class="tip-time">' + time + '</div>' +
+      '<div class="tip-row"><i class="dot mem"></i>显存<b>' + fmtInt(sample.mem) + ' MiB</b></div>' +
+      '<div class="tip-row"><i class="dot util"></i>利用率<b>' +
+        (sample.util == null ? '—' : Math.round(sample.util)) + '%</b></div>';
+    tip.hidden = false;
+
+    const range = chartRange();
+    const x0 = PAD.l;
+    const x1 = cw - PAD.r;
+    const x = xFor(sample.t, range, x0, x1);
+    const tw = tip.offsetWidth;
+    const wrapW = chartWrap.clientWidth;
+    let left = x + 14;
+    if (left + tw > wrapW - 4) left = x - tw - 14;
+    tip.style.left = Math.max(4, left) + 'px';
+    tip.style.top = '8px';
+  }
+
+  canvas.addEventListener('pointermove', (e) => {
+    const range = chartRange();
+    if (!range || history.length < 2) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const x0 = PAD.l;
+    const x1 = cw - PAD.r;
+    if (x < x0 || x > x1) {
+      hoverT = null;
+      tip.hidden = true;
+      drawChart();
+      return;
+    }
+    const t = range.lastT - ((x1 - x) / (x1 - x0)) * range.span;
+    let best = null;
+    for (const s of history) {
+      if (s.t < range.lastT - range.span) continue;
+      if (!best || Math.abs(s.t - t) < Math.abs(best.t - t)) best = s;
+    }
+    if (!best) return;
+    hoverT = best.t;
+    showTip(best);
+    drawChart();
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    hoverT = null;
+    tip.hidden = true;
+    drawChart();
+  });
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cw = Math.max(0, Math.round(rect.width));
+    ch = Math.max(0, Math.round(rect.height));
+    canvas.width = Math.round(cw * dpr);
+    canvas.height = Math.round(ch * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawChart();
+  }
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(resizeCanvas).observe(canvas);
+  } else {
+    window.addEventListener('resize', resizeCanvas);
+  }
+
+  // ---- 连接 ------------------------------------------------------
+  function connect() {
+    setStatus('connecting', '连接中');
+    source = new EventSource('/api/stream');
+    source.addEventListener('init', (e) => {
+      try { onInit(JSON.parse(e.data)); } catch (err) { console.error(err); }
+    });
+    source.addEventListener('sample', (e) => {
+      try { appendSample(JSON.parse(e.data)); } catch (err) { console.error(err); }
+    });
+    source.addEventListener('state', (e) => {
+      const payload = JSON.parse(e.data);
+      if (stopped) return;
+      if (payload.error) {
+        setStatus('error', '异常');
+        setBanner('GPU 数据不可用：' + payload.error, 'error');
+      } else {
+        setStatus('live', '实时');
+        setBanner('', 'error');
+      }
+    });
+    source.addEventListener('processes', (e) => {
+      try { renderProcesses(JSON.parse(e.data)); } catch (err) { console.error(err); }
+    });
+    source.onopen = () => {
+      if (!stopped) setStatus('live', '实时');
+    };
+    source.onerror = () => {
+      if (!stopped) setStatus('reconnect', '重连中');
+    };
+  }
+
+  $('stop').addEventListener('click', () => {
+    if (stopped) return;
+    stopped = true;
+    if (source) {
+      source.close();
+      source = null;
+    }
+    setStatus('stopped', '已停止');
+    $('stop').disabled = true;
+    $('stop-label').textContent = '已停止';
+
+    // sendBeacon 在页面关闭时也能把退出请求发出去。
+    let sent = false;
+    try {
+      if (navigator.sendBeacon) {
+        sent = navigator.sendBeacon('/api/shutdown', new Blob([''], { type: 'text/plain' }));
+      }
+    } catch (err) {
+      sent = false;
+    }
+    if (!sent) {
+      fetch('/api/shutdown', { method: 'POST', keepalive: true }).catch(() => {});
+    }
+
+    // 尝试关闭标签页；浏览器策略阻止时退到空白页，不保留“已停止”提示。
+    try { window.close(); } catch (err) {}
+    setTimeout(() => {
+      try { location.replace('about:blank'); } catch (err) {}
+    }, 300);
+  });
+
+  applyAccent();
+  syncThemeButton();
+  resizeCanvas();
+  connect();
+})();
+</script>
+</body>
+</html>

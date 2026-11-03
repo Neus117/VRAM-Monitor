@@ -1,0 +1,96 @@
+# 显存监控 · VRAM Monitor
+
+![显存监控界面](preview-light.png)
+
+一个零依赖的 Windows NVIDIA 显存实时监控工具：Python 标准库后端 + 浏览器一屏仪表盘。启动后自动打开页面；关闭页面约 1 秒后台自动退出。
+
+**当前版本：v1.0.0**
+
+## 功能
+
+- 显存占用环，以及可用 / 总显存
+- GPU 利用率、温度、功耗、核心频率四个状态卡
+- 最近 60 秒显存与利用率曲线，鼠标悬停查看某一点
+- 进程显存前 6 名：同名进程合并数量、来源说明、占用条、未归属差额
+- 桌面宽度 ≥901px 时按浏览器视口高度一屏装下，不出现纵向滚动
+- 深色 / 浅色主题；强调色跟随 Windows 设置
+- 右上角红色电源按钮：悬停放大、点击立即停止并退出后台
+- 纯 Python 标准库，无第三方依赖；通过 SSE 实时推送
+
+## 快速开始
+
+### 下载便携包
+
+从 [Releases](https://github.com/Neus117/VRAM-Monitor/releases/latest) 下载 `VRAM-Monitor-v1.0.0.zip`，解压后双击：
+
+```text
+启动显存监控.bat
+```
+
+### 从源码运行
+
+```bat
+git clone https://github.com/Neus117/VRAM-Monitor.git
+cd VRAM-Monitor
+python app.py
+```
+
+浏览器会自动打开 `http://127.0.0.1:8765/`。端口被占用时会自动换一个，日志里能看到实际地址；默认端口上已经跑着本工具时会直接打开已有页面，不会重复启动。
+
+## 停止
+
+- 点右上角红色电源按钮「停止监控」：立即停止监控、退出后台，并尝试关闭页面；浏览器禁止脚本关标签页时会退到空白页，不会留下“已停止”提示。
+- 或直接关闭页面：约 1 秒后自动退出；刷新页面有 1 秒重连宽限，不会误退。
+- 命令行启动时也可以按 `Ctrl+C`。
+
+## 依赖
+
+- Windows 10 / 11
+- NVIDIA 显卡与驱动，`nvidia-smi` 可用
+- Python 3.9+，且 `pythonw` 在 `PATH` 中
+
+便携包不包含 Python 运行时；源码运行和双击 `.bat` 都需要本机 Python。
+
+## 命令行参数
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `--port` | `8765` | 监听端口，被占用时自动改用随机端口 |
+| `--interval` | `500` | 采样间隔（毫秒） |
+| `--no-browser` | 关闭 | 启动后不自动打开浏览器 |
+| `--keep-alive` | 关闭 | 没有页面连接时也不自动退出 |
+| `--nvidia-smi` | `nvidia-smi` | 指定 nvidia-smi 路径，默认从 PATH 查找 |
+
+## 已知限制
+
+- 进程显存使用 Windows `GPU Process Memory \\ Local Usage`，与任务管理器「专用 GPU 内存」（提交量）不是同一口径，数字可能不同；卡片底部会显示未归属差额。
+- 进程来源说明按可执行名推断；未收录的程序显示「来源未识别」，不会编造。
+- 多 GPU 环境只做了单卡验证，尚未按 NVIDIA LUID 过滤进程；多显卡 / 核显笔记本可能混入其他 GPU 的进程。
+- 普通 Edge 标签页可能被浏览器策略禁止脚本关闭；此时停止后会退到空白页，后台已经退出。
+- 仅支持 Windows；依赖 NVIDIA 驱动提供的 `nvidia-smi`。
+
+## 实现
+
+- `app.py`：本地 `ThreadingHTTPServer`、SSE 推送、`nvidia-smi` 采样、Windows PDH 进程显存采样。
+- `web/index.html`：内联 CSS/JS，无外部资源；桌面端按 `100vh` 压成一屏，窄屏自动上下堆叠。
+- GPU 采集保持一个 `nvidia-smi -lms 500` 常驻进程逐行读取，不为每个采样点重复启动。
+- 进程采集每 2 秒读一次 Windows `GPU Process Memory` 性能计数器，按进程名合并同名进程。
+- 服务只绑定 `127.0.0.1`；最后一个页面断开后约 1 秒退出。
+
+## 目录
+
+```text
+VRAM-Monitor/
+  app.py                 本地 HTTP 服务、SSE、GPU + 进程显存采样
+  web/index.html         页面（内联 CSS/JS，无外部资源）
+  启动显存监控.bat        无控制台启动
+  icon.ico               快捷方式图标
+  icon-preview.png       图标各尺寸预览
+  preview-light.png      界面预览
+  README.md
+  logs/app.log           运行日志（自动轮转，单文件约 1 MB）
+```
+
+## 故障排查
+
+若页面提示「GPU 数据不可用」，先在终端执行 `nvidia-smi` 确认驱动正常；详细原因见 `logs/app.log`。如果双击 `.bat` 没有反应，确认 `pythonw` 在 `PATH` 中，或改用 `python app.py` 查看报错。
