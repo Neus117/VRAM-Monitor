@@ -4,7 +4,7 @@
 
 一个零依赖的 Windows NVIDIA 显存实时监控工具：Python 标准库后端 + 浏览器一屏仪表盘。启动后自动打开页面；关闭页面约 1 秒后台自动退出。
 
-**当前版本：v1.0.1**
+**当前版本：v1.0.2**
 
 ## 功能
 
@@ -22,7 +22,7 @@
 
 ### 下载便携包
 
-从 [Releases](https://github.com/Neus117/VRAM-Monitor/releases/latest) 下载 `VRAM-Monitor-v1.0.1.zip`，解压后双击：
+从 [Releases](https://github.com/Neus117/VRAM-Monitor/releases/latest) 下载 `VRAM-Monitor-v1.0.2.zip`，解压后双击：
 
 ```text
 启动显存监控.bat

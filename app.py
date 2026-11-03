@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 APP_NAME = "显存监控"
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
