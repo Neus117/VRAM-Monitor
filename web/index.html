@@ -513,7 +513,19 @@
     margin-top: 10px;
     flex: 1;
   }
-  .proc-row { min-width: 0; }
+  .proc-row {
+    min-width: 0;
+    padding: 3px 4px;
+    margin: -3px -4px;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+  }
+  .proc-row[data-has-path="1"] { cursor: pointer; }
+  .proc-row[data-has-path="1"]:hover,
+  .proc-row[data-has-path="1"]:focus-visible {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    outline: none;
+  }
   .proc-line {
     display: flex;
     align-items: baseline;
@@ -575,6 +587,97 @@
     color: var(--text-3);
     font-size: 13px;
   }
+
+  /* ---- 进程路径浮窗 / 提示 ---- */
+  .proc-tip {
+    position: fixed;
+    z-index: 1000;
+    width: min(420px, calc(100vw - 24px));
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    color: var(--text-2);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18);
+    font-size: 12px;
+    line-height: 1.45;
+    pointer-events: none;
+    animation: proc-tip-in 0.12s ease-out;
+  }
+  @keyframes proc-tip-in {
+    from { opacity: 0; transform: translateY(-2px); background-color: transparent; }
+    to { opacity: 1; transform: translateY(0); background-color: var(--card); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .proc-tip { animation: none; }
+  }
+  .proc-tip[hidden] { display: none; }
+  .proc-tip-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+  .proc-tip-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .proc-tip-meta {
+    flex: none;
+    color: var(--text-3);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .proc-tip-path {
+    margin-top: 6px;
+    color: var(--text-2);
+    font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-size: 11.5px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+  .proc-tip-extra {
+    margin-top: 8px;
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .proc-tip-message {
+    margin-top: 6px;
+    color: var(--text-2);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .proc-tip-hint {
+    margin-top: 8px;
+    color: var(--text-2);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: right;
+  }
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    z-index: 120;
+    transform: translateX(-50%);
+    max-width: min(520px, calc(100vw - 32px));
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .toast[hidden] { display: none; }
 
   footer {
     display: flex;
@@ -829,6 +932,9 @@
     </div>
   </main>
 
+  <div class="proc-tip" id="proc-tip" role="tooltip" hidden></div>
+  <div class="toast" id="toast" role="status" hidden></div>
+
   <footer>
     <span id="refresh-note">每 0.5 秒刷新 · 关闭页面后自动停止</span>
   </footer>
@@ -853,6 +959,11 @@
   let hoverT = null;
   let cw = 0;
   let ch = 0;
+  let processItems = [];
+  let pendingProcessPayload = null;
+  let procTipTimer = 0;
+  let procTipRow = null;
+  let toastTimer = 0;
 
   const canvas = $('chart');
   const ctx = canvas.getContext('2d');
@@ -931,6 +1042,8 @@
     const note = $('proc-note');
     const totalEl = $('proc-total');
     if (!payload || payload.error) {
+      hideProcTip();
+      processItems = [];
       totalEl.textContent = '—';
       list.innerHTML = '<div class="proc-empty">暂时无法读取进程显存</div>';
       note.textContent = payload && payload.error ? payload.error : '系统仅统计进程本地显存。';
@@ -938,25 +1051,34 @@
     }
     const items = payload.items || [];
     if (!items.length) {
+      hideProcTip();
+      processItems = [];
       totalEl.textContent = '—';
       list.innerHTML = '<div class="proc-empty">' +
         (payload.seq ? '暂无进程显存数据' : '正在读取进程…') + '</div>';
       note.textContent = '系统仅统计进程本地显存。';
       return;
     }
+    const tipEl = $('proc-tip');
+    if (tipEl && !tipEl.hidden && processItems.length) {
+      pendingProcessPayload = payload;
+      return;
+    }
+    processItems = items;
     const total = currentUsed();
     const procTotal = payload.total || 0;
     totalEl.textContent = '合计 ' + fmtInt(procTotal / 1048576) + ' MiB';
-    list.innerHTML = items.map((item) => {
+    list.innerHTML = items.map((item, idx) => {
       const mib = item.bytes / 1048576;
       const pct = total ? Math.min(100, (mib / total) * 100) : 0;
       const count = item.count > 1 ? '<span class="proc-count">×' + item.count + '</span>' : '';
-      return '<div class="proc-row">' +
+      const hasPath = item.path ? ' data-has-path="1"' : '';
+      return '<div class="proc-row" data-idx="' + idx + '"' + hasPath + ' tabindex="0">' +
         '<div class="proc-line">' +
-          '<span class="proc-name" title="' + esc(item.name) + '">' + esc(item.name) + '</span>' + count +
+          '<span class="proc-name">' + esc(item.name) + '</span>' + count +
           '<span class="proc-val">' + fmtInt(mib) + ' MiB</span>' +
         '</div>' +
-        '<div class="proc-desc" title="' + esc(item.desc || '来源未识别') + '">' +
+        '<div class="proc-desc">' +
           esc(item.desc || '来源未识别') + '</div>' +
         '<div class="proc-bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
       '</div>';
@@ -973,6 +1095,160 @@
         note.textContent = '条形 = 占当前已用显存\n进程合计与顶部占用基本一致。';
       }
     }
+  }
+
+  // ---- 进程路径浮窗 ----------------------------------------------
+  function hideProcTip() {
+    if (procTipTimer) {
+      clearTimeout(procTipTimer);
+      procTipTimer = 0;
+    }
+    procTipRow = null;
+    const tip = $('proc-tip');
+    if (tip) {
+      tip.hidden = true;
+      tip.innerHTML = '';
+    }
+    if (pendingProcessPayload) {
+      const payload = pendingProcessPayload;
+      pendingProcessPayload = null;
+      setTimeout(() => renderProcesses(payload), 0);
+    }
+  }
+
+  function showProcTip(row, item) {
+    const tip = $('proc-tip');
+    if (!tip || !item) return;
+    const paths = Array.isArray(item.paths) ? item.paths : [];
+    const primary = item.path || '';
+    const count = item.count > 1 ? ' ×' + item.count : '';
+    const meta = fmtInt(item.bytes / 1048576) + ' MiB' + count +
+      (item.pid ? ' · PID ' + item.pid : '');
+    let html = '<div class="proc-tip-head">' +
+      '<span class="proc-tip-name">' + esc(item.name) + '</span>' +
+      '<span class="proc-tip-meta">' + meta + '</span></div>';
+    if (primary) {
+      html += '<div class="proc-tip-path">' + esc(primary) + '</div>';
+      if (paths.length > 1) {
+        html += '<div class="proc-tip-extra">共 ' + paths.length + ' 个路径</div>';
+        html += paths.slice(1).map((path) =>
+          '<div class="proc-tip-path">' + esc(path) + '</div>').join('');
+      }
+      html += '<div class="proc-tip-hint">双击打开所在目录</div>';
+    } else {
+      html += '<div class="proc-tip-message">路径不可用（进程受保护或无权限）</div>';
+    }
+    tip.innerHTML = html;
+    tip.hidden = false;
+    tip.style.background = 'transparent';
+    tip.style.visibility = 'hidden';
+
+    const rect = row.getBoundingClientRect();
+    const width = tip.offsetWidth;
+    const height = tip.offsetHeight;
+    const margin = 12;
+    const left = Math.min(
+      Math.max(margin, rect.left),
+      Math.max(margin, innerWidth - width - margin)
+    );
+    let top = rect.bottom + 8;
+    if (top + height > innerHeight - margin) {
+      top = Math.max(margin, rect.top - height - 8);
+    }
+    tip.style.left = Math.round(left) + 'px';
+    tip.style.top = Math.round(top) + 'px';
+    tip.style.visibility = 'visible';
+    requestAnimationFrame(() => {
+      tip.style.background = 'var(--card)';
+    });
+  }
+
+  function showToast(text) {
+    const el = $('toast');
+    if (!el) return;
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+  }
+
+  async function revealProcess(item) {
+    try {
+      const response = await fetch('/api/reveal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid: item.pid }),
+      });
+      if (!response.ok) {
+        let message = 'HTTP ' + response.status;
+        try {
+          const data = await response.json();
+          if (data && data.error) message = data.error;
+        } catch (err) {}
+        showToast('无法打开目录：' + message);
+      }
+    } catch (err) {
+      showToast('无法打开目录：' + (err && err.message ? err.message : '网络错误'));
+    }
+  }
+
+  function setupProcInteractions() {
+    const list = $('proc-list');
+    if (!list) return;
+
+    list.addEventListener('mouseover', (event) => {
+      const row = event.target.closest('.proc-row');
+      if (!row || !list.contains(row) || row === procTipRow) return;
+      const item = processItems[Number(row.dataset.idx)];
+      if (!item) return;
+      hideProcTip();
+      procTipRow = row;
+      procTipTimer = setTimeout(() => {
+        procTipTimer = 0;
+        showProcTip(row, item);
+      }, 260);
+    });
+
+    list.addEventListener('mouseout', (event) => {
+      const row = event.target.closest('.proc-row');
+      if (!row || !list.contains(row)) return;
+      if (event.relatedTarget && row.contains(event.relatedTarget)) return;
+      hideProcTip();
+    });
+
+    list.addEventListener('focusin', (event) => {
+      const row = event.target.closest('.proc-row');
+      if (!row) return;
+      const item = processItems[Number(row.dataset.idx)];
+      if (!item) return;
+      hideProcTip();
+      procTipRow = row;
+      showProcTip(row, item);
+    });
+
+    list.addEventListener('focusout', (event) => {
+      const row = event.target.closest('.proc-row');
+      if (!row) return;
+      if (event.relatedTarget && row.contains(event.relatedTarget)) return;
+      hideProcTip();
+    });
+
+    list.addEventListener('mouseleave', hideProcTip);
+
+    list.addEventListener('dblclick', (event) => {
+      const row = event.target.closest('.proc-row');
+      if (!row) return;
+      const item = processItems[Number(row.dataset.idx)];
+      if (!item || !item.pid || !item.path) return;
+      hideProcTip();
+      revealProcess(item);
+    });
+
+    window.addEventListener('scroll', hideProcTip, true);
+    window.addEventListener('resize', hideProcTip);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') hideProcTip();
+    });
   }
 
   // ---- 状态与提示 ------------------------------------------------
@@ -1361,6 +1637,7 @@
   applyAccent();
   syncThemeButton();
   resizeCanvas();
+  setupProcInteractions();
   connect();
 })();
 </script>

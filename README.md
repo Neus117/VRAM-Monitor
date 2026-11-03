@@ -4,7 +4,7 @@
 
 一个零依赖的 Windows NVIDIA 显存实时监控工具：Python 标准库后端 + 浏览器一屏仪表盘。启动后自动打开页面；关闭页面约 1 秒后台自动退出。
 
-**当前版本：v1.0.0**
+**当前版本：v1.0.1**
 
 ## 功能
 
@@ -12,6 +12,7 @@
 - GPU 利用率、温度、功耗、核心频率四个状态卡
 - 最近 60 秒显存与利用率曲线，鼠标悬停查看某一点
 - 进程显存前 6 名：同名进程合并数量、来源说明、占用条、未归属差额
+- 悬停进程行显示完整路径、PID、多个路径；双击打开所在目录
 - 桌面宽度 ≥901px 时按浏览器视口高度一屏装下，不出现纵向滚动
 - 深色 / 浅色主题；强调色跟随 Windows 设置
 - 右上角红色电源按钮：悬停放大、点击立即停止并退出后台
@@ -21,7 +22,7 @@
 
 ### 下载便携包
 
-从 [Releases](https://github.com/Neus117/VRAM-Monitor/releases/latest) 下载 `VRAM-Monitor-v1.0.0.zip`，解压后双击：
+从 [Releases](https://github.com/Neus117/VRAM-Monitor/releases/latest) 下载 `VRAM-Monitor-v1.0.1.zip`，解压后双击：
 
 ```text
 启动显存监控.bat
@@ -106,6 +107,8 @@ C:\Users\<用户名>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\显�
 - 进程来源说明按可执行名推断；未收录的程序显示「来源未识别」，不会编造。
 - 多 GPU 环境只做了单卡验证，尚未按 NVIDIA LUID 过滤进程；多显卡 / 核显笔记本可能混入其他 GPU 的进程。
 - 普通 Edge 标签页可能被浏览器策略禁止脚本关闭；此时停止后会退到空白页，后台已经退出。
+- 受保护进程可能读不到完整路径，悬停时显示「路径不可用」，此时不能双击打开。
+- 双击打开的资源管理器可能被 Windows 前台焦点规则压在浏览器后面；用 `Alt+Tab` 或任务栏切过去即可。
 - 仅支持 Windows；依赖 NVIDIA 驱动提供的 `nvidia-smi`。
 
 ## 实现
@@ -114,6 +117,7 @@ C:\Users\<用户名>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\显�
 - `web/index.html`：内联 CSS/JS，无外部资源；桌面端按 `100vh` 压成一屏，窄屏自动上下堆叠。
 - GPU 采集保持一个 `nvidia-smi -lms 500` 常驻进程逐行读取，不为每个采样点重复启动。
 - 进程采集每 2 秒读一次 Windows `GPU Process Memory` 性能计数器，按进程名合并同名进程。
+- 进程行悬停时显示 `QueryFullProcessImageNameW` 读到的完整路径；双击只把 PID 发给本地 `/api/reveal`，由后端重新取路径后打开资源管理器。
 - 服务只绑定 `127.0.0.1`；最后一个页面断开后约 1 秒退出。
 
 ## 目录

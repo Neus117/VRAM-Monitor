@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 APP_NAME = "显存监控"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
@@ -182,6 +182,17 @@ _kernel32.Process32FirstW.restype = wintypes.BOOL
 _kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(_ProcessEntry32W)]
 _kernel32.Process32NextW.restype = wintypes.BOOL
 _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+_kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+_kernel32.OpenProcess.restype = wintypes.HANDLE
+_kernel32.QueryFullProcessImageNameW.argtypes = [
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    wintypes.LPWSTR,
+    ctypes.POINTER(wintypes.DWORD),
+]
+_kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
 def process_names() -> dict[int, str]:
@@ -202,6 +213,25 @@ def process_names() -> dict[int, str]:
     finally:
         _kernel32.CloseHandle(snapshot)
     return names
+
+
+def process_path(pid: int) -> str:
+    """读取进程完整路径；保护进程可能拒绝访问，返回空串。"""
+    if pid <= 0:
+        return ""
+    handle = _kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ""
+    try:
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = wintypes.DWORD(len(buffer))
+        if not _kernel32.QueryFullProcessImageNameW(
+            handle, 0, buffer, ctypes.byref(length)
+        ):
+            return ""
+        return buffer.value
+    finally:
+        _kernel32.CloseHandle(handle)
 
 
 PROCESS_DESCRIPTIONS = {
@@ -602,22 +632,43 @@ class ProcessSampler(threading.Thread):
             by_pid[pid] = by_pid.get(pid, 0.0) + value
 
         names = process_names()
-        groups: dict[str, list] = {}
+        paths = {pid: process_path(pid) for pid in by_pid}
+        groups: dict[str, dict] = {}
         for pid, value in by_pid.items():
             label = names.get(pid, "PID %d" % pid)
-            group = groups.setdefault(label, [0.0, 0])
-            group[0] += value
-            group[1] += 1
+            group = groups.setdefault(
+                label, {"bytes": 0.0, "count": 0, "by_path": {}}
+            )
+            group["bytes"] += value
+            group["count"] += 1
+            path = paths.get(pid) or ""
+            if path:
+                entry = group["by_path"].setdefault(path, {"bytes": 0.0, "pids": []})
+                entry["bytes"] += value
+                entry["pids"].append(pid)
 
-        items = [
-            {
-                "name": name,
-                "bytes": int(values[0]),
-                "count": values[1],
-                "desc": describe_process(name),
-            }
-            for name, values in groups.items()
-        ]
+        items = []
+        for name, values in groups.items():
+            ordered = sorted(
+                values["by_path"].items(),
+                key=lambda pair: pair[1]["bytes"],
+                reverse=True,
+            )
+            primary_path = ordered[0][0] if ordered else ""
+            primary_pid = None
+            if ordered:
+                primary_pid = max(ordered[0][1]["pids"], key=lambda pid: by_pid[pid])
+            items.append(
+                {
+                    "name": name,
+                    "bytes": int(values["bytes"]),
+                    "count": values["count"],
+                    "desc": describe_process(name),
+                    "path": primary_path,
+                    "pid": primary_pid,
+                    "paths": [path for path, _ in ordered[:4]],
+                }
+            )
         items.sort(key=lambda item: item["bytes"], reverse=True)
         total = int(sum(by_pid.values()))
 
@@ -779,19 +830,49 @@ class Handler(BaseHTTPRequestHandler):
         app = self.server.app
         app.touch()
         length = int(self.headers.get("Content-Length") or 0)
-        if length:
-            self.rfile.read(length)
+        body = self.rfile.read(length) if length else b""
 
         path = urlparse(self.path).path
-        if path != "/api/shutdown":
-            self._json({"ok": False, "error": "not found"}, 404)
+        if path == "/api/shutdown":
+            if not self._origin_ok():
+                self._json({"ok": False, "error": "forbidden"}, 403)
+                return
+            self._json({"ok": True})
+            threading.Thread(target=self._shutdown_later, args=(app,), daemon=True).start()
             return
+        if path == "/api/reveal":
+            self._reveal(body)
+            return
+        self._json({"ok": False, "error": "not found"}, 404)
+
+    def _reveal(self, body: bytes) -> None:
         if not self._origin_ok():
             self._json({"ok": False, "error": "forbidden"}, 403)
             return
-
+        try:
+            payload = json.loads(body.decode("utf-8") or "{}")
+            pid = int(payload.get("pid") or 0)
+        except (ValueError, TypeError, UnicodeDecodeError, AttributeError):
+            self._json({"ok": False, "error": "无效的进程 ID"}, 400)
+            return
+        if pid <= 0:
+            self._json({"ok": False, "error": "无效的进程 ID"}, 400)
+            return
+        path = process_path(pid)
+        if not path or not os.path.isfile(path):
+            self._json(
+                {"ok": False, "error": "进程路径不可用（可能已退出或受保护）"}, 404
+            )
+            return
+        try:
+            subprocess.Popen(
+                ["explorer.exe", "/select,", path],
+                close_fds=True,
+            )
+        except OSError as exc:
+            self._json({"ok": False, "error": "无法打开资源管理器：%s" % exc}, 500)
+            return
         self._json({"ok": True})
-        threading.Thread(target=self._shutdown_later, args=(app,), daemon=True).start()
 
     def _shutdown_later(self, app: App) -> None:
         time.sleep(0.3)
