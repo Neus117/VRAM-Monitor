@@ -4,7 +4,7 @@
 
 一个零依赖的 Windows NVIDIA 显存实时监控工具：Python 标准库后端 + 浏览器一屏仪表盘。启动后自动打开页面；关闭页面约 1 秒后台自动退出。
 
-**当前版本：v1.0.2**
+**当前版本：v1.0.3**
 
 ## 功能
 
@@ -16,19 +16,30 @@
 - 桌面宽度 ≥901px 时按浏览器视口高度一屏装下，不出现纵向滚动
 - 深色 / 浅色主题；强调色跟随 Windows 设置
 - 右上角红色电源按钮：悬停放大、点击立即停止并退出后台
+- 提供免安装 exe 便携包，不需要 Python
 - 纯 Python 标准库，无第三方依赖；通过 SSE 实时推送
 
 ## 快速开始
 
-### 下载便携包
+### 免安装便携版（推荐）
 
-从 [Releases](https://github.com/Neus117/VRAM-Monitor/releases/latest) 下载 `VRAM-Monitor-v1.0.2.zip`，解压后双击：
+从 [Releases](https://github.com/Neus117/VRAM-Monitor/releases/latest) 下载 `VRAM-Monitor-v1.0.3-portable.zip`，解压后双击：
+
+```text
+VRAM-Monitor.exe
+```
+
+不需要安装 Python。这是 PyInstaller 单文件 exe，首次启动会先解压到临时目录，可能比源码版慢一两秒。
+
+### 源码版
+
+从 [Releases](https://github.com/Neus117/VRAM-Monitor/releases/latest) 下载 `VRAM-Monitor-v1.0.3.zip`，解压后双击：
 
 ```text
 启动显存监控.bat
 ```
 
-### 从源码运行
+源码版需要本机 Python 3.9+。也可以直接 clone 运行：
 
 ```bat
 git clone https://github.com/Neus117/VRAM-Monitor.git
@@ -46,7 +57,9 @@ python app.py
 
 ## 快捷方式与开始菜单
 
-`.bat` 本身不能保存自定义图标，图标要设置在快捷方式上。解压后按下面创建。
+便携版：直接右键 `VRAM-Monitor.exe` →「发送到」→「桌面快捷方式」即可，exe 自带图标，不需要改图标。
+
+源码版：`.bat` 本身不能保存自定义图标，图标要设置在快捷方式上。解压后按下面创建。
 
 ### 创建桌面快捷方式
 
@@ -85,11 +98,19 @@ C:\Users\<用户名>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\显�
 
 ## 依赖
 
+运行 exe 便携版：
+
+- Windows 10 / 11
+- NVIDIA 显卡与驱动，`nvidia-smi` 可用
+- 不需要 Python
+
+从源码或源码 zip 运行：
+
 - Windows 10 / 11
 - NVIDIA 显卡与驱动，`nvidia-smi` 可用
 - Python 3.9+，且 `pythonw` 在 `PATH` 中
 
-便携包不包含 Python 运行时；源码运行和双击 `.bat` 都需要本机 Python。
+exe 便携版已经打包 Python 运行时；源码版和双击 `.bat` 仍需要本机 Python。
 
 ## 命令行参数
 
@@ -109,6 +130,7 @@ C:\Users\<用户名>\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\显�
 - 普通 Edge 标签页可能被浏览器策略禁止脚本关闭；此时停止后会退到空白页，后台已经退出。
 - 受保护进程可能读不到完整路径，悬停时显示「路径不可用」，此时不能双击打开。
 - 双击打开的资源管理器可能被 Windows 前台焦点规则压在浏览器后面；用 `Alt+Tab` 或任务栏切过去即可。
+- exe 未签名，Windows SmartScreen 可能提示「未知发布者」；选择「更多信息」→「仍要运行」。
 - 仅支持 Windows；依赖 NVIDIA 驱动提供的 `nvidia-smi`。
 
 ## 实现
@@ -127,6 +149,9 @@ VRAM-Monitor/
   app.py                 本地 HTTP 服务、SSE、GPU + 进程显存采样
   web/index.html         页面（内联 CSS/JS，无外部资源）
   启动显存监控.bat        无控制台启动
+  build-portable.ps1     构建 exe 便携包
+  version_info.txt       exe 版本资源
+  PORTABLE.txt           便携版说明
   icon.ico               快捷方式图标
   icon-preview.png       图标各尺寸预览
   preview-light.png      界面预览

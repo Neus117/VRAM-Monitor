@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """显存监控：本地实时查看 NVIDIA GPU 显存占用。
 
-启动后在默认浏览器打开 http://127.0.0.1:<port>/，关闭页面约 20 秒后自动退出。
+启动后在默认浏览器打开 http://127.0.0.1:<port>/，关闭页面约 1 秒后自动退出。
 只依赖 Python 标准库和 NVIDIA 驱动自带的 nvidia-smi。
 """
 
@@ -28,11 +28,18 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 APP_NAME = "显存监控"
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 
-ROOT = Path(__file__).resolve().parent
-WEB_ROOT = ROOT / "web"
-LOG_DIR = ROOT / "logs"
+# 源码运行时资源/日志都在项目目录；PyInstaller 时 web 在 _MEIPASS，
+# 日志放在 exe 同目录，便于便携包保留日志。
+if getattr(sys, "frozen", False):
+    APP_DIR = Path(sys.executable).resolve().parent
+    RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
+else:
+    APP_DIR = Path(__file__).resolve().parent
+    RESOURCE_DIR = APP_DIR
+WEB_ROOT = RESOURCE_DIR / "web"
+LOG_DIR = APP_DIR / "logs"
 
 HISTORY_MAX = 240        # 内部最多保留 120 秒（0.5 秒一个点）
 CHART_POINTS = 130       # 页面首次打开时回放的点数

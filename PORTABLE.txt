@@ -1,0 +1,10 @@
+VRAM Monitor 1.0.3 便携版
+
+双击 VRAM-Monitor.exe 启动，浏览器会自动打开 http://127.0.0.1:8765/。
+
+不需要安装 Python；需要 Windows 10/11 和 NVIDIA 驱动（nvidia-smi 可用）。
+关闭页面约 1 秒后退出；右上角“停止监控”也可以立即退出。
+日志在 exe 同目录的 logs\app.log。
+
+这是未签名的便携程序，Windows SmartScreen 可能提示“未知发布者”；
+选择“更多信息” -> “仍要运行”即可。请勿从不可信来源下载后运行。

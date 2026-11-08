@@ -5,3 +5,7 @@ logs/
 *.lnk
 Thumbs.db
 .DS_Store
+build/
+dist/
+release/
+*.spec
